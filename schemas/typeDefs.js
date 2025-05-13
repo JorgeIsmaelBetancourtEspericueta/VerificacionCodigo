@@ -9,6 +9,7 @@ const typeDefs = gql`
         isVerified: Boolean!
     }
 
+# Verificación de usuario
     type AuthCode {
         token: String
         user: User
