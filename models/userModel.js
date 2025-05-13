@@ -1,73 +1,108 @@
-const users = [
-    { id: "1", email: "eeee@hotmail.com", phone: "3111234567", isVerified: false },
-    { id: "2", email: "Rod@hotmail.com", phone: "3117654321", isVerified: false },
-];
+require('dotenv').config();
+const users = [];
+const authCodes = [];
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const sgMail = require('@sendgrid/mail');
+const phoneRegex = /^\+521\d{10}$/;
+
+const sendWhatsAppCode = (phone, code) => {
+    const client = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+    return client.messages.create({
+        from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+        contentSid: 'HX229f5a04fd0510ce1b071852155d3e75',
+        contentVariables: `{"1":"${code}"}`,
+        to: `whatsapp:${phone}`
+    })
+}
 
 const getAllUsers = () => users;
 const getUserById = (id) => users.find(user => user.id === id);
-const registerUser = (email, phone) => {
+
+const registerUser = async (email, phone, via) => {
     if (!emailRegex.test(email)) {
-        throw new Error("Invalid email format");
+        throw new Error("Formato de correo inválido");
     }
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const newUser = { id: (users.length + 1).toString(), email, phone, isVerified: false };
-    
-    //Whatsapp Twilio
+    if (!phoneRegex.test(phone)) {
+        throw new Error("Formato del número de telefónico inválido");
+    }
 
-    const client = require('twilio')(accountSid, authToken);
+    let user = users.find(u => u.email === email);
+    const now = Date.now();
 
-    client.messages
-        .create({
-            from: 'whatsapp:+14155238886',
-            contentSid: '',
-            contentVariables: '{"1":"409173"}',
-            to: 'whatsapp:+5213112853405'
-        })
-        .then(message => console.log(message.sid))
-        .done();
-    //---------------------
-    const msg = {
-        to: email,
-        from: FROM_EMAIL,
-        subject: 'Tu código de verificación',
-        text: `Tu código de verificación es: ${verificationCode}`,
-    };
-    await sgMail.send(msg);
+    const existingCode = authCodes.find(c => c.userId === (user?.id || ''));
+    if (existingCode && now - new Date(existingCode.createdAt).getTime() < 60 * 1000) {
+        throw new Error("Espera antes de solicitar otro código");
+    }
 
-    users.push(newUser);
-    return newUser;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const userId = (users.length + 1).toString();
+
+    if (!user) {
+        user = { id: userId, email, phone, isVerified: false };
+        users.push(user);
+    } else {
+        user.phone = phone; //Actualizar número
+    }
+
+    authCodes.push({
+        userId,
+        code,
+        createdAt: new Date().toISOString()
+    });
+
+    if (via === 'WhatsApp') {
+        await sendWhatsAppCode(user.phone, code);
+    }
+    return user;
 }
 
 const verifyCode = (email, code) => {
     const user = users.find(user => user.email === email);
-    if (!user) return null;
-    if (user.isVerified) return null;
-    if (user.verificationCode !== code) return null;
+    if (!user) throw new Error("Usuario no encontrado");
+
+    if (user.isVerified) throw new Error("El usuario ya se encuentra verificado")
+
+    const auth = authCodes.find(c => c.userId === user.id);
+    if (!auth) throw new Error("No se encontró un código de verificación");
+
+    const expired = Date.now() - new Date(auth.createdAt).getTime() > 5 * 60 * 1000;
+    if (expired) throw new Error("El código ha expirado");
+    if (auth.code !== code) throw new Error("Código inválido");
+
     user.isVerified = true;
-    delete user.verificationCode;
-    return user;
+    const index = authCodes.findIndex(code => code.userId === user.id);
+    if (index !== -1) authCodes.splice(index, 1);
+
+    return {
+        token: `${user.email}-${new Date().toISOString()}`,
+        user
+    };
 }
 
-const update = (id, name, email) => {
-    const user = getUserById(id);
-    if (!user) return null;
-    if (name !== undefined) user.name = name;
-    if (email !== undefined) {
-        if (!emailRegex.test(email)) {
-            throw new Error("Invalid email format");
+const login = async (email) => {
+    const user = users.find(user => user.email === email);
+    if (!user) throw new Error("Usuario no encontrado");
+
+    if (!user.isVerified) {
+        const now = Date.now();
+        const existingCode = authCodes.find(code => code.userId === user.id);
+
+        if (existingCode && now - new Date(existingCode.createdAt).getTime() < 60 * 1000) {
+            throw new Error("Espera antes de solicitar otro código");
         }
-        user.email = email;
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        authCodes.push({ userId: user.id, code, createdAt: new Date().toISOString() });
+
+        await sendWhatsAppCode(user.phone, code);
+
+        throw new Error("Se requiere verificación. El código ha sido reenviado");
     }
-    return user;
+
+    return {
+        token: `${user.email}-${new Date().toISOString()}`,
+        user
+    };
 }
 
-const remove = (id) => {
-    const userIndex = users.findIndex(user => user.id === id);
-    if (userIndex === -1) return null;
-    return users.splice(userIndex, 1)[0];
-}
-
-module.exports = { getAllUsers, getUserById, create, update, remove };
+module.exports = { getAllUsers, getUserById, registerUser, verifyCode, login };

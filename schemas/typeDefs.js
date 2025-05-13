@@ -9,10 +9,16 @@ const typeDefs = gql`
         isVerified: Boolean!
     }
 
-# Verificación de usuario
+    # Verificación de usuario
     type AuthCode {
         token: String
         user: User
+    }
+
+    # Consultas
+    type Query {
+        getUsers: [User!]!
+        getUser(id: ID!): User
     }
 
     # Mutaciones
