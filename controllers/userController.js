@@ -12,11 +12,11 @@ const resolvers = {
 
         /**
          * Verifica si el código ingresado es correcto. Si lo es, marca al usuario como verificado
+         * y devuelve un objeto con el token de sesión y los datos del usuario.
          */
         verifyCode: (_, { email, code }) => userModel.update(email, code),
 
         /**
-         * login
          * Permite el inicio de sesión si el usuario ya está verificado.
          * Si no lo está, vuelve a generar y enviar un código de verificación.
          */
