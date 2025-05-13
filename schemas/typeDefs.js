@@ -1,21 +1,24 @@
-const { gql } = require('apollo-server');
+const { gql } = require("apollo-server");
 
 const typeDefs = gql`
+    # Tipos principales
     type User {
         id: ID!
-        name: String!
         email: String!
+        phone: String!
+        isVerified: Boolean!
     }
 
-    type Query {
-        getUsers: [User!]!
-        getUser(id: ID!): User
+    type AuthCode {
+        token: String
+        user: User
     }
 
+    # Mutaciones
     type Mutation {
-        createUser(name: String!, email: String!): User!
-        updateUser(id: ID!, name: String, email: String): User!
-        deleteUser(id: ID!): User
+        registerUser(email: String!, phone: String!, via: String!): User!
+        verifyCode(email: String!, code: String!): AuthCode!
+        login(email: String!): AuthCode!
     }
 `;
 
